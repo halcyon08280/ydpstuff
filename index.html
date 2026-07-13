@@ -91,6 +91,9 @@ tbody td{padding:12px;vertical-align:top;}
 .status-done{background:var(--bg);color:var(--text-hint);border:1px solid var(--border);}
 .btn-delete-row{background:none;border:none;cursor:pointer;color:var(--text-hint);font-size:.95rem;padding:2px 6px;border-radius:4px;transition:color .15s;}
 .btn-delete-row:hover{color:var(--danger);}
+.btn-return{background:none;border:1.5px solid var(--accent);color:var(--accent);border-radius:6px;padding:3px 10px;font-size:.72rem;font-weight:700;font-family:inherit;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.btn-return:hover{background:var(--accent);color:#fff;}
+.btn-return:disabled{border-color:var(--border);color:var(--text-hint);cursor:default;}
 .history-empty{text-align:center;padding:40px 20px;color:var(--text-hint);font-size:.9rem;}
 
 #toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text-main);color:#fff;padding:13px 22px;border-radius:10px;font-size:.9rem;font-weight:500;z-index:9999;transition:transform .3s ease;pointer-events:none;white-space:nowrap;}
@@ -147,6 +150,10 @@ tbody td{padding:12px;vertical-align:top;}
   <div class="form-card">
     <div class="form-title">&#128221; 대여 신청서</div>
     <div class="form-grid">
+      <div class="field full">
+        <label>부서 <span class="req">*</span></label>
+        <input type="text" id="managerDept" placeholder="예) 총무팀">
+      </div>
       <div class="field">
         <label>담당자 이름 <span class="req">*</span></label>
         <input type="text" id="managerName" placeholder="홍길동">
@@ -192,22 +199,48 @@ function setCfg(k,v){ localStorage.setItem(k,v); }
 const TELEGRAM_BOT_TOKEN = getCfg('tg_token');
 const TELEGRAM_CHAT_ID   = getCfg('tg_chat_id');
 
-const ITEMS = [
-  { name: '흰색 테이블보',         total: 60,  available: 60  },
-  { name: '남색 테이블보',         total: 8,   available: 8   },
-  { name: '테이블',               total: 60,  available: 60  },
-  { name: '의자',                 total: 500, available: 500 },
-  { name: '탁상용 가판대(양면)',    total: 5,   available: 5   },
-  { name: '탁상용 가판대(단면)',    total: 2,   available: 2   },
-  { name: '탁상용 명패 大',        total: 17,  available: 17  },
-  { name: '탁상용 명패 中',        total: 46,  available: 46  },
-  { name: '탁상용 명패 小',        total: 54,  available: 54  },
-  { name: '슬리퍼/신발주머니',     total: 929, available: 929 },
-  { name: '비표-일반끈',          total: 197, available: 197 },
-  { name: '비표-파랑고급끈',      total: 112, available: 112 },
-  { name: '비표-NHNE 고급끈',    total: 112, available: 112 },
-  { name: '비표',                total: 544, available: 544 },
+const BASE_ITEMS = [
+  { name: '흰색 테이블보',         total: 60  },
+  { name: '남색 테이블보',         total: 8   },
+  { name: '테이블',               total: 60  },
+  { name: '의자',                 total: 500 },
+  { name: '탁상용 가판대(양면)',    total: 5   },
+  { name: '탁상용 가판대(단면)',    total: 2   },
+  { name: '탁상용 명패 大',        total: 17  },
+  { name: '탁상용 명패 中',        total: 46  },
+  { name: '탁상용 명패 小',        total: 54  },
+  { name: '슬리퍼/신발주머니',     total: 929 },
+  { name: '비표-일반끈',          total: 197 },
+  { name: '비표-파랑고급끈',      total: 112 },
+  { name: '비표-NHNE 고급끈',    total: 112 },
+  { name: '비표',                total: 544 },
 ];
+
+// 신청 내역을 바탕으로 현재 대여 가능 수량 계산
+// returned: true 로 표시된 건만 수량 복구
+function calcAvailable() {
+  const avail = {};
+  BASE_ITEMS.forEach(function(i){ avail[i.name] = i.total; });
+  const list = loadHistory();
+  list.forEach(function(rec) {
+    if (rec.returned) return; // 반납 완료된 건은 차감 안 함
+    rec.items.forEach(function(ri) {
+      if (!ri.isOther && avail[ri.name] !== undefined) {
+        avail[ri.name] = Math.max(0, avail[ri.name] - ri.qty);
+      }
+    });
+  });
+  return avail;
+}
+
+function buildITEMS() {
+  const avail = calcAvailable();
+  return BASE_ITEMS.map(function(i){
+    return { name: i.name, total: i.total, available: avail[i.name] };
+  });
+}
+
+let ITEMS = buildITEMS();
 
 const selected = {};
 
@@ -309,13 +342,26 @@ function loadHistory() {
 }
 function saveHistory(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
 
-function getStatus(rDate, eDate) {
+function getStatus(rec) {
+  if (rec.returned) return { label: '반납 완료', cls: 'status-done' };
   const now = Date.now();
-  const r = new Date(rDate).getTime();
-  const e = new Date(eDate).getTime();
+  const r = new Date(rec.rentalDate).getTime();
+  const e = new Date(rec.returnDate).getTime();
   if (now < r)  return { label: '대여 예정', cls: 'status-upcoming' };
   if (now <= e) return { label: '대여 중',   cls: 'status-active' };
-  return           { label: '반납 완료',     cls: 'status-done' };
+  return               { label: '반납 지연', cls: 'status-active' };
+}
+
+function markReturned(idx) {
+  if (!confirm('반납 완료 처리하시겠어요?\n대여 수량이 재고에 다시 반영됩니다.')) return;
+  const list = loadHistory();
+  list[idx].returned = true;
+  list[idx].returnedAt = new Date().toISOString();
+  saveHistory(list);
+  ITEMS = buildITEMS();
+  renderStock();
+  renderHistory();
+  toast('반납 완료 처리되었습니다.', 'success');
 }
 
 function renderHistory() {
@@ -333,23 +379,27 @@ function renderHistory() {
   let rows = '';
   sorted.forEach(function(rec, sortedIdx) {
     const realIdx = list.length - 1 - sortedIdx;
-    const st = getStatus(rec.rentalDate, rec.returnDate);
+    const st = getStatus(rec);
     const itemTags = rec.items.map(function(i) {
       return '<span class="item-tag ' + (i.isOther ? 'other' : '') + '">' + i.name + ' ' + i.qty + '개</span>';
     }).join('');
+    const returnBtn = rec.returned
+      ? '<button class="btn-return" disabled>반납 완료</button>'
+      : '<button class="btn-return" onclick="markReturned(' + realIdx + ')">반납 완료</button>';
     rows += '<tr>' +
       '<td class="td-num">' + (list.length - sortedIdx) + '</td>' +
+      '<td style="font-size:.82rem;">' + (rec.managerDept || '-') + '</td>' +
       '<td><strong>' + rec.managerName + '</strong><br><span style="font-size:.75rem;color:var(--text-hint);">' + rec.managerPhone + '</span></td>' +
       '<td style="max-width:200px;">' + itemTags + '</td>' +
       '<td style="white-space:nowrap;font-size:.8rem;"><div>' + fmtDateShort(rec.rentalDate) + '</div><div style="color:var(--text-hint);">~ ' + fmtDateShort(rec.returnDate) + '</div></td>' +
       '<td><span class="status-chip ' + st.cls + '">' + st.label + '</span></td>' +
-      '<td style="font-size:.8rem;color:var(--text-sub);max-width:140px;">' + (rec.memo || '-') + '</td>' +
+      '<td>' + returnBtn + '</td>' +
       '<td><button class="btn-delete-row" onclick="deleteRecord(' + realIdx + ')" title="삭제">&#128465;</button></td>' +
     '</tr>';
   });
 
   bodyEl.innerHTML = '<div class="history-table-wrap"><table>' +
-    '<thead><tr><th>#</th><th>담당자</th><th>대여 물품</th><th>대여 / 반납 일시</th><th>상태</th><th>비고</th><th></th></tr></thead>' +
+    '<thead><tr><th>#</th><th>부서</th><th>담당자</th><th>대여 물품</th><th>대여 / 반납 일시</th><th>상태</th><th>반납</th><th></th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table></div>';
 }
 
@@ -358,11 +408,14 @@ function deleteRecord(idx) {
   const list = loadHistory();
   list.splice(idx, 1);
   saveHistory(list);
+  ITEMS = buildITEMS();
+  renderStock();
   renderHistory();
   toast('내역이 삭제되었습니다.');
 }
 
 async function submitForm() {
+  const dept  = document.getElementById('managerDept').value.trim();
   const name  = document.getElementById('managerName').value.trim();
   const phone = document.getElementById('managerPhone').value.trim();
   const rDate = document.getElementById('rentalDate').value;
@@ -377,6 +430,7 @@ async function submitForm() {
   const oQty  = parseInt(document.getElementById('otherQtyInput').value) || 1;
   if (oName) items.push({ name: oName, qty: oQty, isOther: true });
 
+  if (!dept)  { toast('부서를 입력해 주세요.', 'error'); return; }
   if (!name)  { toast('담당자 이름을 입력해 주세요.', 'error'); return; }
   if (!phone) { toast('담당자 연락처를 입력해 주세요.', 'error'); return; }
   if (items.length === 0) { toast('물품을 하나 이상 선택하거나 입력해 주세요.', 'error'); return; }
@@ -393,11 +447,11 @@ async function submitForm() {
   }
 
   const itemLines = items.map(function(i){ return '  • ' + (i.isOther ? '[기타] ' : '') + i.name + ': ' + i.qty + '개'; }).join('\n');
-  const msg = '&#128230; *물품 대여 신청*\n\n' +
-    '&#128100; *담당자*: ' + name + '\n&#128222; *연락처*: ' + phone + '\n\n' +
-    '&#128203; *대여 물품*\n' + itemLines + '\n\n' +
-    '&#128197; *대여 일시*: ' + fmtDate(rDate) + '\n&#128260; *반납 일시*: ' + fmtDate(eDate) +
-    (memo ? '\n\n&#128221; *비고*: ' + memo : '');
+  const msg = '📦 *물품 대여 신청*\n\n' +
+    '🏢 *부서*: ' + dept + '\n👤 *담당자*: ' + name + '\n📞 *연락처*: ' + phone + '\n\n' +
+    '📋 *대여 물품*\n' + itemLines + '\n\n' +
+    '📅 *대여 일시*: ' + fmtDate(rDate) + '\n🔄 *반납 일시*: ' + fmtDate(eDate) +
+    (memo ? '\n\n📝 *비고*: ' + memo : '');
 
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
@@ -430,15 +484,18 @@ async function submitForm() {
     }
   }
 
-  const record = { managerName: name, managerPhone: phone, items: items, rentalDate: rDate, returnDate: eDate, memo: memo, createdAt: new Date().toISOString() };
+  const record = { managerDept: dept, managerName: name, managerPhone: phone, items: items, rentalDate: rDate, returnDate: eDate, memo: memo, createdAt: new Date().toISOString() };
   const list = loadHistory();
   list.push(record);
   saveHistory(list);
   renderHistory();
+  ITEMS = buildITEMS();
+  renderStock();
 
   toast('대여 신청이 완료되었습니다!', 'success');
 
   // reset
+  document.getElementById('managerDept').value  = '';
   document.getElementById('managerName').value  = '';
   document.getElementById('managerPhone').value = '';
   document.getElementById('rentalDate').value   = '';
