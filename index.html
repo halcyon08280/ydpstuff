@@ -226,9 +226,9 @@ tbody td{padding:12px;vertical-align:top;}
 // ★ 텔레그램 설정 (관리자가 설정 후 GitHub에 반영)
 // ══════════════════════════════════════════════
 const CONFIG = {
-  token:  '8671632922:AAFo_Dsr-MSGtj1JQraRpBk7bKOpj3UTFK4',
-  chatId: '-1002911478984',
-  pwHash: ''
+  token:  '8671632922:AAFo_Dsr-MSGtj1JQraRpBk7bKOpj3UTFK4',   // Bot Token
+  chatId: '-1002911478984',     // Chat ID
+  pwHash: ''                        // 비밀번호 해시 (설정 후 자동 채워짐)
 };
 // 비밀번호 해싱 (SHA-256)
 async function hashPw(pw) {
@@ -253,31 +253,8 @@ const BASE_ITEMS = [
   { name: '비표',                total: 544 },
 ];
 
-// 신청 내역을 바탕으로 현재 대여 가능 수량 계산
-// returned: true 로 표시된 건만 수량 복구
-function calcAvailable() {
-  const avail = {};
-  BASE_ITEMS.forEach(function(i){ avail[i.name] = i.total; });
-  const list = loadHistory();
-  list.forEach(function(rec) {
-    if (rec.returned) return; // 반납 완료된 건은 차감 안 함
-    rec.items.forEach(function(ri) {
-      if (!ri.isOther && avail[ri.name] !== undefined) {
-        avail[ri.name] = Math.max(0, avail[ri.name] - ri.qty);
-      }
-    });
-  });
-  return avail;
-}
-
-function buildITEMS() {
-  const avail = calcAvailable();
-  return BASE_ITEMS.map(function(i){
-    return { name: i.name, total: i.total, available: avail[i.name] };
-  });
-}
-
-let ITEMS = buildITEMS();
+// 초기 ITEMS (refreshAll 호출 전 기본값)
+let ITEMS = BASE_ITEMS.map(function(i){ return { name: i.name, total: i.total, available: i.total }; });
 
 const selected = {};
 
@@ -373,11 +350,26 @@ function toast(msg, type) {
   setTimeout(function(){ el.className = ''; }, 3500);
 }
 
-const STORAGE_KEY = 'rental_history_v1';
-function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { return []; }
+// ═══════════════════════════════════════════════
+// Google Sheets 연동
+// ═══════════════════════════════════════════════
+const GS_URL = 'https://script.google.com/macros/s/AKfycbwYMsnOvbaL2lU7YCxLQ0xiK5yQkwNfUJmCUIbjSPnypY9Tyxy1pQb-7GM1_L4HaVXZ/exec';
+
+let historyCache = []; // 전체 기기 공유 캐시
+
+async function gsGet() {
+  const res = await fetch(GS_URL);
+  const json = await res.json();
+  return json.ok ? json.data : [];
 }
-function saveHistory(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+
+async function gsPost(payload) {
+  const res = await fetch(GS_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  return await res.json();
+}
 
 function getStatus(rec) {
   if (rec.returned) return { label: '반납 완료', cls: 'status-done' };
@@ -389,20 +381,53 @@ function getStatus(rec) {
   return               { label: '반납 지연', cls: 'status-active' };
 }
 
-function markReturned(idx) {
+// 재고 계산 (캐시 기반)
+function calcAvailableFromCache() {
+  const avail = {};
+  BASE_ITEMS.forEach(function(i){ avail[i.name] = i.total; });
+  historyCache.forEach(function(rec) {
+    if (rec.returned) return;
+    rec.items.forEach(function(ri) {
+      if (!ri.isOther && avail[ri.name] !== undefined) {
+        avail[ri.name] = Math.max(0, avail[ri.name] - ri.qty);
+      }
+    });
+  });
+  return avail;
+}
+
+async function markReturned(id) {
   if (!confirm('반납 완료 처리하시겠어요?\n대여 수량이 재고에 다시 반영됩니다.')) return;
-  const list = loadHistory();
-  list[idx].returned = true;
-  list[idx].returnedAt = new Date().toISOString();
-  saveHistory(list);
-  ITEMS = buildITEMS();
+  const res = await gsPost({ action: 'return', id: id });
+  if (res.ok) {
+    toast('반납 완료 처리되었습니다.', 'success');
+    await refreshAll();
+  } else {
+    toast('처리 오류: ' + (res.error || ''), 'error');
+  }
+}
+
+async function deleteRecord(id) {
+  if (!confirm('이 신청 내역을 삭제할까요?')) return;
+  const res = await gsPost({ action: 'delete', id: id });
+  if (res.ok) {
+    toast('내역이 삭제되었습니다.');
+    await refreshAll();
+  } else {
+    toast('삭제 오류: ' + (res.error || ''), 'error');
+  }
+}
+
+async function refreshAll() {
+  historyCache = await gsGet();
+  const avail = calcAvailableFromCache();
+  ITEMS = BASE_ITEMS.map(function(i){ return { name: i.name, total: i.total, available: avail[i.name] }; });
   renderStock();
   renderHistory();
-  toast('반납 완료 처리되었습니다.', 'success');
 }
 
 function renderHistory() {
-  const list = loadHistory();
+  const list = historyCache;
   const bodyEl = document.getElementById('historyBody');
   const countEl = document.getElementById('historyCountLabel');
   countEl.textContent = list.length ? '총 ' + list.length + '건' : '';
@@ -415,40 +440,28 @@ function renderHistory() {
   const sorted = list.slice().reverse();
   let rows = '';
   sorted.forEach(function(rec, sortedIdx) {
-    const realIdx = list.length - 1 - sortedIdx;
     const st = getStatus(rec);
     const itemTags = rec.items.map(function(i) {
       return '<span class="item-tag ' + (i.isOther ? 'other' : '') + '">' + i.name + ' ' + i.qty + '개</span>';
     }).join('');
     const returnBtn = rec.returned
       ? '<button class="btn-return" disabled>반납 완료</button>'
-      : '<button class="btn-return" onclick="markReturned(' + realIdx + ')">반납 완료</button>';
+      : '<button class="btn-return" onclick="markReturned(\'' + rec.id + '\')">반납 완료</button>';
     rows += '<tr>' +
       '<td class="td-num">' + (list.length - sortedIdx) + '</td>' +
-      '<td style="font-size:.82rem;">' + (rec.managerDept || '-') + '</td>' +
-      '<td><strong>' + rec.managerName + '</strong><br><span style="font-size:.75rem;color:var(--text-hint);">' + rec.managerPhone + '</span></td>' +
+      '<td style="font-size:.82rem;">' + (rec.dept || '-') + '</td>' +
+      '<td><strong>' + rec.name + '</strong><br><span style="font-size:.75rem;color:var(--text-hint);">' + rec.phone + '</span></td>' +
       '<td style="max-width:200px;">' + itemTags + '</td>' +
       '<td style="white-space:nowrap;font-size:.8rem;"><div>' + fmtDateShort(rec.rentalDate) + '</div><div style="color:var(--text-hint);">~ ' + fmtDateShort(rec.returnDate) + '</div></td>' +
       '<td><span class="status-chip ' + st.cls + '">' + st.label + '</span></td>' +
       '<td>' + returnBtn + '</td>' +
-      '<td><button class="btn-delete-row" onclick="deleteRecord(' + realIdx + ')" title="삭제">&#128465;</button></td>' +
+      '<td><button class="btn-delete-row" onclick="deleteRecord(\'' + rec.id + '\')" title="삭제">&#128465;</button></td>' +
     '</tr>';
   });
 
   bodyEl.innerHTML = '<div class="history-table-wrap"><table>' +
     '<thead><tr><th>#</th><th>부서</th><th>담당자</th><th>대여 물품</th><th>대여 / 반납 일시</th><th>상태</th><th>반납</th><th></th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table></div>';
-}
-
-function deleteRecord(idx) {
-  if (!confirm('이 신청 내역을 삭제할까요?')) return;
-  const list = loadHistory();
-  list.splice(idx, 1);
-  saveHistory(list);
-  ITEMS = buildITEMS();
-  renderStock();
-  renderHistory();
-  toast('내역이 삭제되었습니다.');
 }
 
 async function submitForm() {
@@ -517,14 +530,13 @@ async function submitForm() {
     return;
   }
 
-  const record = { managerDept: dept, managerName: name, managerPhone: phone, items: items, rentalDate: rDate, returnDate: eDate, memo: memo, createdAt: new Date().toISOString() };
-  const list = loadHistory();
-  list.push(record);
-  saveHistory(list);
-  renderHistory();
-  ITEMS = buildITEMS();
-  renderStock();
-
+  const gsRes = await gsPost({ action: 'add', dept, name, phone, items, rentalDate: rDate, returnDate: eDate, memo });
+  if (!gsRes.ok) {
+    toast('저장 오류: ' + (gsRes.error || ''), 'error');
+    btn.disabled = false; btn.textContent = '대여 신청하기';
+    return;
+  }
+  await refreshAll();
   toast('대여 신청이 완료되었습니다!', 'success');
 
   // reset
@@ -611,8 +623,10 @@ document.getElementById('settingsOverlay').addEventListener('click', function(e)
   if (e.target === this) closeSettings();
 });
 
+// 초기 로딩 — Google Sheets에서 데이터 불러오기
+document.getElementById('historyBody').innerHTML = '<div class="history-empty">데이터를 불러오는 중...</div>';
 renderStock();
-renderHistory();
+refreshAll();
 </script>
 </body>
 </html>
