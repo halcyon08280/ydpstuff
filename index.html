@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -109,14 +110,32 @@ tbody td{padding:12px;vertical-align:top;}
 <header>
   <h1>&#128230; 물품 대여 신청</h1>
   <p>물품 카드를 클릭해 선택하고 수량을 입력한 뒤 신청서를 작성해 주세요.</p>
-  <button onclick="openSettings()" style="margin-top:12px;background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 16px;font-size:.8rem;font-family:inherit;cursor:pointer;transition:background .15s;" onmouseover="this.style.background='rgba(255,255,255,.28)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#9881;&#65039; 텔레그램 설정</button>
+  <button onclick="openSettings()" style="margin-top:12px;background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 16px;font-size:.8rem;font-family:inherit;cursor:pointer;transition:background .15s;" onmouseover="this.style.background='rgba(255,255,255,.28)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#9881;&#65039; 관리자 설정</button>
 </header>
+
+<!-- 비밀번호 확인 모달 -->
+<div id="pwOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:32px 28px;width:min(380px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.18);">
+    <div style="font-size:1.05rem;font-weight:700;margin-bottom:6px;">🔒 관리자 확인</div>
+    <div style="font-size:.8rem;color:#6B7280;margin-bottom:20px;line-height:1.6;">설정을 변경하려면 관리자 비밀번호를 입력해 주세요.</div>
+    <input id="pwInput" type="password" placeholder="비밀번호 입력"
+      onkeydown="if(event.key==='Enter')checkPassword()"
+      style="width:100%;font-size:.95rem;padding:10px 14px;border:1.5px solid #E2E6EB;border-radius:8px;outline:none;color:#111827;font-family:inherit;"
+      onfocus="this.style.borderColor='#2563EB';document.getElementById('pwError').style.display='none';"
+      onblur="this.style.borderColor='#E2E6EB'">
+    <div id="pwError" style="display:none;font-size:.78rem;color:#EF4444;margin-top:6px;">비밀번호가 올바르지 않습니다.</div>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button onclick="checkPassword()" style="flex:1;background:#2563EB;color:#fff;border:none;border-radius:8px;padding:11px;font-size:.9rem;font-weight:700;font-family:inherit;cursor:pointer;">확인</button>
+      <button onclick="closePw()" style="flex:1;background:#F7F8FA;color:#374151;border:1.5px solid #E2E6EB;border-radius:8px;padding:11px;font-size:.9rem;font-weight:600;font-family:inherit;cursor:pointer;">취소</button>
+    </div>
+  </div>
+</div>
 
 <!-- 설정 모달 -->
 <div id="settingsOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;padding:32px 28px;width:min(460px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.18);">
     <div style="font-size:1.05rem;font-weight:700;margin-bottom:6px;">&#9881;&#65039; 텔레그램 봇 설정</div>
-    <div style="font-size:.8rem;color:#6B7280;margin-bottom:20px;line-height:1.6;">설정값은 이 기기의 브라우저에만 저장됩니다.<br>봇 토큰과 채팅 ID를 입력해 주세요.</div>
+    <div style="font-size:.8rem;color:#6B7280;margin-bottom:20px;line-height:1.6;">설정값은 HTML 파일에 저장됩니다. 변경 후 GitHub에 반영하면 모든 기기에 적용됩니다.</div>
     <div style="display:flex;flex-direction:column;gap:14px;">
       <div>
         <label style="font-size:.78rem;font-weight:600;color:#6B7280;display:block;margin-bottom:5px;">Bot Token</label>
@@ -130,10 +149,20 @@ tbody td{padding:12px;vertical-align:top;}
           style="width:100%;font-family:monospace;font-size:.85rem;padding:9px 12px;border:1.5px solid #E2E6EB;border-radius:8px;outline:none;color:#111827;"
           onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E6EB'">
       </div>
+      <div>
+        <label style="font-size:.78rem;font-weight:600;color:#6B7280;display:block;margin-bottom:5px;">관리자 비밀번호 변경 <span style="font-weight:400;color:#9CA3AF;">(변경 원할 때만 입력)</span></label>
+        <input id="cfgNewPw" type="password" placeholder="새 비밀번호 (비워두면 변경 안 함)"
+          style="width:100%;font-size:.85rem;padding:9px 12px;border:1.5px solid #E2E6EB;border-radius:8px;outline:none;color:#111827;font-family:inherit;"
+          onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E6EB'">
+      </div>
     </div>
-    <div style="display:flex;gap:10px;margin-top:22px;">
-      <button onclick="saveSettings()" style="flex:1;background:#2563EB;color:#fff;border:none;border-radius:8px;padding:11px;font-size:.9rem;font-weight:700;font-family:inherit;cursor:pointer;">저장</button>
-      <button onclick="closeSettings()" style="flex:1;background:#F7F8FA;color:#374151;border:1.5px solid #E2E6EB;border-radius:8px;padding:11px;font-size:.9rem;font-weight:600;font-family:inherit;cursor:pointer;">취소</button>
+    <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:10px 14px;font-size:.78rem;color:#92400E;margin-top:16px;line-height:1.6;">
+      💡 저장 후 아래 <strong>"설정값 복사"</strong> 버튼으로 코드를 복사하여 GitHub의 index.html에 붙여넣으면 모든 기기에서 동일하게 작동합니다.
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button onclick="saveSettings()" style="flex:2;background:#2563EB;color:#fff;border:none;border-radius:8px;padding:11px;font-size:.9rem;font-weight:700;font-family:inherit;cursor:pointer;">저장</button>
+      <button onclick="copyConfig()" style="flex:1;background:#F7F8FA;color:#374151;border:1.5px solid #E2E6EB;border-radius:8px;padding:11px;font-size:.85rem;font-weight:600;font-family:inherit;cursor:pointer;">설정값 복사</button>
+      <button onclick="closeSettings()" style="flex:1;background:#F7F8FA;color:#374151;border:1.5px solid #E2E6EB;border-radius:8px;padding:11px;font-size:.85rem;font-weight:600;font-family:inherit;cursor:pointer;">취소</button>
     </div>
   </div>
 </div>
@@ -193,11 +222,19 @@ tbody td{padding:12px;vertical-align:top;}
 <div id="toast"></div>
 
 <script>
-// ── 텔레그램 설정: localStorage에서 읽어옴 ──
-function getCfg(k){ return localStorage.getItem(k) || ''; }
-function setCfg(k,v){ localStorage.setItem(k,v); }
-const TELEGRAM_BOT_TOKEN = getCfg('tg_token');
-const TELEGRAM_CHAT_ID   = getCfg('tg_chat_id');
+// ══════════════════════════════════════════════
+// ★ 텔레그램 설정 (관리자가 설정 후 GitHub에 반영)
+// ══════════════════════════════════════════════
+const CONFIG = {
+  token:  '8782362562:AAExJCd9Z...',
+  chatId: '-1009876543210',
+  pwHash: '0314'
+};
+// 비밀번호 해싱 (SHA-256)
+async function hashPw(pw) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 
 const BASE_ITEMS = [
   { name: '흰색 테이블보',         total: 60  },
@@ -457,31 +494,27 @@ async function submitForm() {
   btn.disabled = true;
   btn.textContent = '전송 중...';
 
-  const tgToken  = getCfg('tg_token');
-  const tgChatId = getCfg('tg_chat_id');
-  if (!tgToken || !tgChatId) {
+  const tgToken  = CONFIG.token;
+  const tgChatId = CONFIG.chatId;
+  if (!tgToken || tgToken === 'YOUR_BOT_TOKEN_HERE') {
     openSettings();
     toast('텔레그램 설정을 먼저 입력해 주세요.', 'error');
     btn.disabled = false; btn.textContent = '대여 신청하기';
     return;
   }
-  if (false) {
-    // (unused branch kept for structure)
-  } else {
-    try {
-      const res  = await fetch('https://api.telegram.org/bot' + tgToken + '/sendMessage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: tgChatId, text: msg, parse_mode: 'Markdown' })
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.description || '전송 실패');
-    } catch(e) {
-      console.error(e);
-      toast('텔레그램 전송 오류: ' + e.message, 'error');
-      btn.disabled = false; btn.textContent = '대여 신청하기';
-      return;
-    }
+  try {
+    const res  = await fetch('https://api.telegram.org/bot' + tgToken + '/sendMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: tgChatId, text: msg, parse_mode: 'Markdown' })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.description || '전송 실패');
+  } catch(e) {
+    console.error(e);
+    toast('텔레그램 전송 오류: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = '대여 신청하기';
+    return;
   }
 
   const record = { managerDept: dept, managerName: name, managerPhone: phone, items: items, rentalDate: rDate, returnDate: eDate, memo: memo, createdAt: new Date().toISOString() };
@@ -511,23 +544,68 @@ async function submitForm() {
   btn.textContent = '대여 신청하기';
 }
 
+// ── 비밀번호 모달 ──
 function openSettings() {
-  document.getElementById('cfgToken').value  = getCfg('tg_token');
-  document.getElementById('cfgChatId').value = getCfg('tg_chat_id');
-  const ov = document.getElementById('settingsOverlay');
-  ov.style.display = 'flex';
+  // 비밀번호가 아직 설정 안 된 경우 바로 설정 열기
+  if (!CONFIG.pwHash) {
+    _openSettingsPanel();
+    return;
+  }
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwError').style.display = 'none';
+  document.getElementById('pwOverlay').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('pwInput').focus(); }, 100);
+}
+function closePw() {
+  document.getElementById('pwOverlay').style.display = 'none';
+}
+async function checkPassword() {
+  const pw = document.getElementById('pwInput').value;
+  if (!pw) return;
+  const h = await hashPw(pw);
+  if (h === CONFIG.pwHash) {
+    closePw();
+    _openSettingsPanel();
+  } else {
+    document.getElementById('pwError').style.display = 'block';
+    document.getElementById('pwInput').value = '';
+    document.getElementById('pwInput').focus();
+  }
+}
+document.getElementById('pwOverlay').addEventListener('click', function(e){
+  if (e.target === this) closePw();
+});
+
+// ── 설정 패널 ──
+function _openSettingsPanel() {
+  document.getElementById('cfgToken').value  = CONFIG.token !== 'YOUR_BOT_TOKEN_HERE' ? CONFIG.token : '';
+  document.getElementById('cfgChatId').value = CONFIG.chatId !== 'YOUR_CHAT_ID_HERE'  ? CONFIG.chatId : '';
+  document.getElementById('cfgNewPw').value  = '';
+  document.getElementById('settingsOverlay').style.display = 'flex';
 }
 function closeSettings() {
   document.getElementById('settingsOverlay').style.display = 'none';
 }
-function saveSettings() {
-  const t = document.getElementById('cfgToken').value.trim();
-  const c = document.getElementById('cfgChatId').value.trim();
+async function saveSettings() {
+  const t  = document.getElementById('cfgToken').value.trim();
+  const c  = document.getElementById('cfgChatId').value.trim();
+  const np = document.getElementById('cfgNewPw').value.trim();
   if (!t || !c) { alert('Bot Token과 Chat ID를 모두 입력해 주세요.'); return; }
-  setCfg('tg_token', t);
-  setCfg('tg_chat_id', c);
+  CONFIG.token  = t;
+  CONFIG.chatId = c;
+  if (np) { CONFIG.pwHash = await hashPw(np); }
   closeSettings();
-  toast('텔레그램 설정이 저장되었습니다.', 'success');
+  toast('설정이 저장되었습니다. 아래 "설정값 복사" 후 GitHub에 반영하세요.', 'success');
+}
+function copyConfig() {
+  const t  = document.getElementById('cfgToken').value.trim()  || CONFIG.token;
+  const c  = document.getElementById('cfgChatId').value.trim() || CONFIG.chatId;
+  const snippet = `const CONFIG = {\n  token:  '${t}',\n  chatId: '${c}',\n  pwHash: '${CONFIG.pwHash}'\n};`;
+  navigator.clipboard.writeText(snippet).then(function(){
+    toast('설정값이 클립보드에 복사되었습니다!', 'success');
+  }).catch(function(){
+    prompt('아래 코드를 복사하여 index.html의 CONFIG 부분에 붙여넣으세요:', snippet);
+  });
 }
 document.getElementById('settingsOverlay').addEventListener('click', function(e){
   if (e.target === this) closeSettings();
