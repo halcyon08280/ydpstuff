@@ -181,11 +181,11 @@ tbody td{padding:12px;vertical-align:top;}
     <div class="form-grid">
       <div class="field full">
         <label>부서 <span class="req">*</span></label>
-        <input type="text" id="managerDept" placeholder="예) 기획부">
+        <input type="text" id="managerDept" placeholder="예) 총무팀">
       </div>
       <div class="field">
         <label>담당자 이름 <span class="req">*</span></label>
-        <input type="text" id="managerName" placeholder="이름작성">
+        <input type="text" id="managerName" placeholder="홍길동">
       </div>
       <div class="field">
         <label>담당자 연락처 <span class="req">*</span></label>
@@ -226,9 +226,9 @@ tbody td{padding:12px;vertical-align:top;}
 // ★ 텔레그램 설정 (관리자가 설정 후 GitHub에 반영)
 // ══════════════════════════════════════════════
 const CONFIG = {
-  token:  '8671632922:AAFo_Dsr-MSGtj1JQraRpBk7bKOpj3UTFK4',
-  chatId: '-1002911478984',
-  pwHash: ''
+  token:  '8671632922:AAFo_Dsr-MSGtj1JQraRpBk7bKOpj3UTFK4',   // Bot Token
+  chatId: '-1002911478984',     // Chat ID
+  pwHash: ''                        // 비밀번호 해시 (설정 후 자동 채워짐)
 };
 // 비밀번호 해싱 (SHA-256)
 async function hashPw(pw) {
@@ -532,6 +532,7 @@ async function submitForm() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: tgChatId,
+        message_thread_id: 14057,
         text: msg,
         parse_mode: 'Markdown',
         reply_markup: {
