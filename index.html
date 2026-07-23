@@ -181,7 +181,7 @@ tbody td{padding:12px;vertical-align:top;}
     <div class="form-grid">
       <div class="field full">
         <label>부서 <span class="req">*</span></label>
-        <input type="text" id="managerDept" placeholder="예) 기획부">
+        <input type="text" id="managerDept" placeholder="예) 총무팀">
       </div>
       <div class="field">
         <label>담당자 이름 <span class="req">*</span></label>
@@ -226,8 +226,8 @@ tbody td{padding:12px;vertical-align:top;}
 // ★ 텔레그램 설정 (관리자가 설정 후 GitHub에 반영)
 // ══════════════════════════════════════════════
 const CONFIG = {
-  token:  '8671632922:AAFo_Dsr-MSGtj1JQraRpBk7bKOpj3UTFK4',   // Bot Token
-  chatId: '-1002911478984',     // Chat ID
+  token:  'YOUR_BOT_TOKEN_HERE',   // Bot Token
+  chatId: 'YOUR_CHAT_ID_HERE',     // Chat ID
   pwHash: ''                        // 비밀번호 해시 (설정 후 자동 채워짐)
 };
 // 비밀번호 해싱 (SHA-256)
@@ -353,7 +353,7 @@ function toast(msg, type) {
 // ═══════════════════════════════════════════════
 // Google Sheets 연동
 // ═══════════════════════════════════════════════
-const GS_URL = 'https://script.google.com/macros/s/AKfycby98FPzM1b3KpobfuJcTxMPV979ULtw6wYmEf7GEaxmi_5a121h43MsUgGoDeeUlxBX/exec';
+const GS_URL = 'https://script.google.com/macros/s/AKfycbxf4ah2WYwBkciLq7GKWSyWMOTjkG4GN8h_Ckvh4SO5JoHK2Gk8y6_Syi8Q6rg9tL6AXQ/exec';
 
 let historyCache = []; // 전체 기기 공유 캐시
 
@@ -496,13 +496,6 @@ async function submitForm() {
     }
   }
 
-  const itemLines = items.map(function(i){ return '  • ' + (i.isOther ? '[기타] ' : '') + i.name + ': ' + i.qty + '개'; }).join('\n');
-  const msg = '📦 *물품 대여 신청*\n\n' +
-    '🏢 *부서*: ' + dept + '\n👤 *담당자*: ' + name + '\n📞 *연락처*: ' + phone + '\n\n' +
-    '📋 *대여 물품*\n' + itemLines + '\n\n' +
-    '📅 *대여 일시*: ' + fmtDate(rDate) + '\n🔄 *반납 일시*: ' + fmtDate(eDate) +
-    (memo ? '\n\n📝 *비고*: ' + memo : '');
-
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
   btn.textContent = '전송 중...';
@@ -515,24 +508,44 @@ async function submitForm() {
     btn.disabled = false; btn.textContent = '대여 신청하기';
     return;
   }
+
+  // 1) Sheets에 먼저 저장해서 ID 확보
+  const gsRes = await gsPost({ action: 'add', dept, name, phone, items, rentalDate: rDate, returnDate: eDate, memo });
+  if (!gsRes.ok) {
+    toast('저장 오류: ' + (gsRes.error || ''), 'error');
+    btn.disabled = false; btn.textContent = '대여 신청하기';
+    return;
+  }
+  const recordId = gsRes.id;
+
+  // 2) 텔레그램 메세지 + 불출완료 인라인 버튼 전송
+  const itemLines = items.map(function(i){ return '  • ' + (i.isOther ? '[기타] ' : '') + i.name + ': ' + i.qty + '개'; }).join('\n');
+  const msg = '📦 *물품 대여 신청*\n\n' +
+    '🏢 *부서*: ' + dept + '\n👤 *담당자*: ' + name + '\n📞 *연락처*: ' + phone + '\n\n' +
+    '📋 *대여 물품*\n' + itemLines + '\n\n' +
+    '📅 *대여 일시*: ' + fmtDate(rDate) + '\n🔄 *반납 일시*: ' + fmtDate(eDate) +
+    (memo ? '\n\n📝 *비고*: ' + memo : '');
+
   try {
-    const res  = await fetch('https://api.telegram.org/bot' + tgToken + '/sendMessage', {
+    const res = await fetch('https://api.telegram.org/bot' + tgToken + '/sendMessage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: tgChatId, text: msg, parse_mode: 'Markdown' })
+      body: JSON.stringify({
+        chat_id: tgChatId,
+        text: msg,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ 불출완료', callback_data: 'return:' + recordId }
+          ]]
+        }
+      })
     });
     const json = await res.json();
     if (!json.ok) throw new Error(json.description || '전송 실패');
   } catch(e) {
     console.error(e);
     toast('텔레그램 전송 오류: ' + e.message, 'error');
-    btn.disabled = false; btn.textContent = '대여 신청하기';
-    return;
-  }
-
-  const gsRes = await gsPost({ action: 'add', dept, name, phone, items, rentalDate: rDate, returnDate: eDate, memo });
-  if (!gsRes.ok) {
-    toast('저장 오류: ' + (gsRes.error || ''), 'error');
     btn.disabled = false; btn.textContent = '대여 신청하기';
     return;
   }
